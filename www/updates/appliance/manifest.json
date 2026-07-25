@@ -1,7 +1,0 @@
-{
-  "_comment": "Placeholder. The publish pipeline overwrites this. The Pi OTA client reads it, compares 'version' to the running build, and if newer downloads 'bundle', verifies 'sha256', then 'rauc install's it.",
-  "version": 0,
-  "bundle": null,
-  "sha256": null,
-  "notes": "no update published yet"
-}

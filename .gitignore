@@ -1,4 +1,1 @@
-# Runtime-mirrored artifacts (fetched from GitHub Releases by segno-mirror)
-www/updates/appliance/**/*.raucb
-www/updates/appliance/**/.tag
-www/updates/appliance/**/.tmp.*
+# nothing to ignore: served files live in the updates-www named volume

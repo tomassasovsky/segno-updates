@@ -22,19 +22,23 @@ The Pi OTA client compares `version` to the running build; if newer it downloads
 verifies the bundle's own X.509 signature — the manifest is not the security
 boundary, the signature is).
 
-## Deploy on Portainer
-1. Portainer → Stacks → Add stack. It needs `default.conf` and the `www/` tree next
-   to the compose on the host — clone this `deploy/server/` dir onto the host and
-   point the stack at it, or use a Portainer "git repository" stack targeting this
-   path. Deploy — it publishes host port **3029**.
-2. Point Nginx Proxy Manager's `segno.aquiles.dev` proxy host at `<docker-host>:3029`
-   (already configured by the user).
+## Deploy on Portainer (git-repository stack)
+Both services **build** (nginx bakes its config in; the mirror builds from `sync/`),
+and the served files live in a **named volume** — so there are NO host-file bind
+mounts to pre-create (that's what caused the earlier "mount a directory onto a file"
+error with a pasted compose). Deploy it as a git stack so Portainer has the build
+context:
 
-Verify: `curl https://segno.aquiles.dev/healthz` → `ok`, and
-`curl https://segno.aquiles.dev/updates/appliance/manifest.json`.
+1. Portainer → Stacks → Add stack → **Repository** → this repo
+   (`https://github.com/tomassasovsky/segno-updates`), compose path `docker-compose.yml`.
+   Deploy — it builds both images and publishes host port **3029**.
+2. Point Nginx Proxy Manager's `segno.aquiles.dev` proxy host at `<docker-host>:3029`.
 
-## Publishing an update (done by the pipeline / by hand)
-Drop the signed `*.raucb` into `www/updates/appliance/`, then write `manifest.json`
-with the new `version`, `bundle` filename and its `sha256`. The container serves
-`www/` read-only, so publishing is just updating files in this dir on the host
-(`no-cache` headers mean the Pi sees changes immediately).
+Verify: `curl https://segno.aquiles.dev/healthz` → `ok`. Until the first release is
+published the manifest 404s (nothing mirrored yet) — that's expected.
+
+## Publishing an update
+Automatic: the app repo's release pipeline publishes a signed `.raucb` + `manifest.json`
+to a GitHub Release per channel; `segno-mirror` polls the Releases API every
+`POLL_INTERVAL`s and writes them into the `updates-www` volume nginx serves
+(`no-cache` headers → the Pi sees changes immediately). No manual file copying.

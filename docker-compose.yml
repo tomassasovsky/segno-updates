@@ -1,18 +1,18 @@
-# Loopy / segno update server. Two services:
-#   segno-updates  — nginx, serves /updates/... on host port 3029 (NPM proxies to it)
-#   segno-mirror   — polls the GitHub Releases API and mirrors artifacts per channel
-#                    into the shared ./www volume (so devices only talk to your server)
-# Deploy as a Portainer stack. See README.md.
+# Loopy / segno update server. Self-contained (no host-file binds — Portainer-safe):
+#   segno-updates  — nginx image with the config baked in, serves /updates/... on 3029
+#   segno-mirror   — polls the GitHub Releases API, writes artifacts into the shared
+#                    named volume that nginx serves
+# Deploy as a Portainer *git repository* stack (both services build). See README.md.
 services:
   segno-updates:
-    image: nginx:1.27-alpine
+    build: ./nginx
+    image: segno-updates:latest
     container_name: segno-updates
     restart: unless-stopped
     ports:
-      - "3029:3029"          # host 3029 -> nginx (listens on 3029; see default.conf)
+      - "3029:3029"          # host 3029 -> nginx (listens on 3029; see nginx/default.conf)
     volumes:
-      - ./www:/usr/share/nginx/html:ro
-      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+      - updates-www:/usr/share/nginx/html:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3029/healthz"]
       interval: 30s
@@ -27,6 +27,12 @@ services:
     environment:
       GITHUB_REPO: "tomassasovsky/loopy"
       POLL_INTERVAL: "300"      # seconds between GitHub Releases polls
-      # GITHUB_TOKEN: "..."     # set (via Portainer env / secret) if releases are private
+      WWW_DIR: "/www"
+      # GITHUB_TOKEN: "..."     # set (Portainer env / secret) if releases are private
     volumes:
-      - ./www:/www              # read-write: the mirror writes updates/appliance/<channel>/
+      - updates-www:/www        # read-write: the mirror writes updates/appliance/<channel>/
+
+# Shared named volume: the mirror populates it, nginx serves it. Persists across
+# redeploys (unlike a repo-clone bind) and needs no host files to pre-exist.
+volumes:
+  updates-www:
