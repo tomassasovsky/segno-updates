@@ -1,0 +1,32 @@
+# Loopy / segno update server. Two services:
+#   segno-updates  — nginx, serves /updates/... on host port 3029 (NPM proxies to it)
+#   segno-mirror   — polls the GitHub Releases API and mirrors artifacts per channel
+#                    into the shared ./www volume (so devices only talk to your server)
+# Deploy as a Portainer stack. See README.md.
+services:
+  segno-updates:
+    image: nginx:1.27-alpine
+    container_name: segno-updates
+    restart: unless-stopped
+    ports:
+      - "3029:3029"          # host 3029 -> nginx (listens on 3029; see default.conf)
+    volumes:
+      - ./www:/usr/share/nginx/html:ro
+      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3029/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  segno-mirror:
+    build: ./sync
+    image: segno-mirror:latest
+    container_name: segno-mirror
+    restart: unless-stopped
+    environment:
+      GITHUB_REPO: "tomassasovsky/loopy"
+      POLL_INTERVAL: "300"      # seconds between GitHub Releases polls
+      # GITHUB_TOKEN: "..."     # set (via Portainer env / secret) if releases are private
+    volumes:
+      - ./www:/www              # read-write: the mirror writes updates/appliance/<channel>/
