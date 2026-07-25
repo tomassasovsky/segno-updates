@@ -6,7 +6,6 @@
 services:
   segno-updates:
     build: ./nginx
-    image: segno-updates:latest
     container_name: segno-updates
     restart: unless-stopped
     ports:
@@ -21,7 +20,6 @@ services:
 
   segno-mirror:
     build: ./sync
-    image: segno-mirror:latest
     container_name: segno-mirror
     restart: unless-stopped
     environment:
