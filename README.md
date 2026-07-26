@@ -38,7 +38,7 @@ Verify: `curl https://segno.aquiles.dev/healthz` → `ok`. Until the first relea
 published the manifest 404s (nothing mirrored yet) — that's expected.
 
 ## Publishing an update
-Automatic: the app repo's release pipeline publishes a signed `.raucb` + `manifest.json`
+The mirror selects the newest **prerelease by `published_at`** (GitHub's `/releases` list order is not reliable). Automatic: the app repo's release pipeline publishes a signed `.raucb` + `manifest.json`
 to a GitHub Release per channel; `segno-mirror` polls the Releases API every
 `POLL_INTERVAL`s and writes them into the `updates-www` volume nginx serves
 (`no-cache` headers → the Pi sees changes immediately). No manual file copying.

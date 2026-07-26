@@ -4,7 +4,7 @@
 # devices only ever talk to segno.aquiles.dev, never GitHub.
 #
 # Channels:
-#   experimental <- the latest PRERELEASE
+#   experimental <- newest PRERELEASE by published_at (NOT GitHub list order)
 #   production   <- the latest full release (/releases/latest)
 #
 # Per release we mirror the assets named `manifest.json` and `*.raucb` (the app
@@ -19,12 +19,23 @@ API="https://api.github.com/repos/${REPO}"
 
 # GitHub API auth is optional (public releases work unauthenticated at 60 req/h;
 # a token raises the limit and is required if the repo/releases are private).
-gh() {
+gh_api() {
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
              -H "Accept: application/vnd.github+json" "$@"
     else
         curl -fsSL -H "Accept: application/vnd.github+json" "$@"
+    fi
+}
+
+# Asset downloads use browser_download_url (302 → Azure blob). Do not send the
+# GitHub JSON Accept header — keep a plain curl follow-redirects fetch.
+gh_asset() {
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+             -H "Accept: application/octet-stream" "$@"
+    else
+        curl -fsSL "$@"
     fi
 }
 
@@ -34,11 +45,15 @@ mirror_channel() {
     mkdir -p "$dest"
 
     if [ "$kind" = "release" ]; then
-        rel=$(gh "${API}/releases/latest" 2>/dev/null || true)
+        rel=$(gh_api "${API}/releases/latest" 2>/dev/null || true)
     else
-        # newest prerelease
-        rel=$(gh "${API}/releases?per_page=30" 2>/dev/null \
-              | jq -c 'map(select(.prerelease==true and .draft==false)) | .[0] // empty' || true)
+        # GitHub's /releases list is NOT reliably newest-first (observed: an older
+        # prerelease can appear before later ones). Sort by published_at desc.
+        rel=$(gh_api "${API}/releases?per_page=30" 2>/dev/null \
+              | jq -c 'map(select(.prerelease==true and .draft==false))
+                       | sort_by(.published_at // .created_at)
+                       | reverse
+                       | .[0] // empty' || true)
     fi
     [ -n "${rel:-}" ] && [ "$rel" != "null" ] || { echo "[$channel] no release yet"; return 0; }
 
@@ -54,7 +69,7 @@ mirror_channel() {
         case "$name" in
             manifest.json|*.raucb)
                 echo "[$channel]   fetch $name"
-                if gh -o "${dest}/.tmp.${name}" "$url"; then
+                if gh_asset -o "${dest}/.tmp.${name}" "$url"; then
                     mv -f "${dest}/.tmp.${name}" "${dest}/${name}"
                 else
                     echo "[$channel]   FAILED $name"; rm -f "${dest}/.tmp.${name}"
