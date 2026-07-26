@@ -10,6 +10,10 @@
 # Per release we mirror the assets named `manifest.json` and `*.raucb` (the app
 # bundle). The manifest CI produces carries the version, the bundle filename
 # (relative), and its sha256 — the device reads it and installs the bundle.
+#
+# Modes (first arg):
+#   loop  — forever poll (default; used by the container entrypoint)
+#   once  — single mirror cycle then exit (used by POST /hooks/sync)
 set -eu
 
 REPO="${GITHUB_REPO:-tomassasovsky/loopy}"
@@ -81,9 +85,26 @@ mirror_channel() {
     if [ -f "${dest}/manifest.json" ]; then echo "$tag" > "${dest}/.tag"; fi
 }
 
-echo "segno mirror: repo=${REPO} interval=${INTERVAL}s -> ${WWW}/updates/appliance/{experimental,production}"
-while true; do
+run_once() {
     mirror_channel experimental prerelease || true
     mirror_channel production   release    || true
-    sleep "$INTERVAL"
-done
+}
+
+mode="${1:-loop}"
+case "$mode" in
+    once)
+        echo "segno mirror once: repo=${REPO} -> ${WWW}/updates/appliance/{experimental,production}"
+        run_once
+        ;;
+    loop)
+        echo "segno mirror: repo=${REPO} interval=${INTERVAL}s -> ${WWW}/updates/appliance/{experimental,production}"
+        while true; do
+            run_once
+            sleep "$INTERVAL"
+        done
+        ;;
+    *)
+        echo "usage: sync.sh [loop|once]" >&2
+        exit 2
+        ;;
+esac

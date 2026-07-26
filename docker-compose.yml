@@ -1,7 +1,8 @@
 # Loopy / segno update server. Self-contained (no host-file binds — Portainer-safe):
 #   segno-updates  — nginx image with the config baked in, serves /updates/... on 3029
 #   segno-mirror   — polls the GitHub Releases API, writes artifacts into the shared
-#                    named volume that nginx serves
+#                    named volume that nginx serves; also accepts POST /sync (proxied
+#                    publicly as /hooks/sync) when SYNC_TOKEN is set
 # Deploy as a Portainer *git repository* stack (both services build). See README.md.
 services:
   segno-updates:
@@ -17,6 +18,8 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+    depends_on:
+      - segno-mirror
 
   segno-mirror:
     build: ./sync
@@ -24,8 +27,11 @@ services:
     restart: unless-stopped
     environment:
       GITHUB_REPO: "tomassasovsky/loopy"
-      POLL_INTERVAL: "300"      # seconds between GitHub Releases polls
+      POLL_INTERVAL: "300"      # seconds between GitHub Releases polls (fallback)
       WWW_DIR: "/www"
+      # Required for POST /hooks/sync. Same value as loopy GitHub Actions secret
+      # SEGNO_SYNC_TOKEN. Leave unset to disable the trigger (poll-only).
+      # SYNC_TOKEN: "..."
       # GITHUB_TOKEN: "..."     # set (Portainer env / secret) if releases are private
     volumes:
       - updates-www:/www        # read-write: the mirror writes updates/appliance/<channel>/
