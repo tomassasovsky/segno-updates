@@ -76,10 +76,17 @@ mirror_channel() {
         case "$name" in
             manifest.json|*.raucb|*.hex)
                 echo "[$channel]   fetch $name"
-                if gh_asset -o "${dest}/.tmp.${name}" "$url"; then
-                    mv -f "${dest}/.tmp.${name}" "${dest}/${name}"
+                # Temp name is unique per run. It used to be .tmp.<name>,
+                # shared by every run, so two overlapping cycles raced for the
+                # same path and one renamed the other's file away:
+                #   mv: can't rename '.../.tmp.loopy-pedal-….hex': No such file
+                # The lock below should prevent overlap; this makes a collision
+                # harmless if it ever gets one anyway.
+                tmp="${dest}/.tmp.$$.${name}"
+                if gh_asset -o "$tmp" "$url"; then
+                    mv -f "$tmp" "${dest}/${name}"
                 else
-                    echo "[$channel]   FAILED $name"; rm -f "${dest}/.tmp.${name}"
+                    echo "[$channel]   FAILED $name"; rm -f "$tmp"
                 fi
                 ;;
         esac
@@ -96,20 +103,41 @@ mirror_channel() {
     fi
 }
 
-# Succeeds when every artifact the mirrored manifest points at is present.
+# Succeeds when every artifact the mirrored manifest points at is present AND
+# matches the checksum the manifest states for it.
+#
+# Presence alone is not enough: a truncated download, or a stale file left by a
+# previous release with the same name, both pass an -f test and then fail on
+# the device — where the appliance refuses the .hex and the update dies
+# mid-flight. The manifest already carries both sha256s, so checking costs a
+# read of files we just wrote and needs no extra source of truth.
 mirror_complete() {
     d="$1"
     [ -f "${d}/manifest.json" ] || { echo "  missing: manifest.json"; return 1; }
-    missing=0
-    for f in $(jq -r '[.bundle, .pedalFirmware.hex]
-                      | map(select(. != null and . != ""))
-                      | .[]' "${d}/manifest.json" 2>/dev/null); do
+    bad=0
+    pairs=$(jq -r '[
+                     {n: .bundle, s: .sha256},
+                     {n: .pedalFirmware.hex, s: .pedalFirmware.sha256}
+                   ]
+                   | map(select(.n != null and .n != ""))
+                   | .[] | "\(.n) \(.s // "")"' \
+              "${d}/manifest.json" 2>/dev/null)
+    printf '%s\n' "$pairs" | while IFS=' ' read -r f want; do
+        [ -n "$f" ] || continue
         if [ ! -f "${d}/${f}" ]; then
-            echo "  missing: $f"
-            missing=1
+            echo "  missing: $f"; exit 1
         fi
-    done
-    [ "$missing" -eq 0 ]
+        # A manifest with no sha256 is refused by the appliance anyway, so
+        # mirroring it as "complete" would only hide the problem.
+        if [ -z "$want" ]; then
+            echo "  no sha256 published for: $f"; exit 1
+        fi
+        got=$(sha256sum "${d}/${f}" | cut -d" " -f1)
+        if [ "$got" != "$want" ]; then
+            echo "  checksum mismatch: $f (want $want, got $got)"; exit 1
+        fi
+    done || bad=1
+    [ "$bad" -eq 0 ]
 }
 
 run_once() {
@@ -117,16 +145,38 @@ run_once() {
     mirror_channel production   release    || true
 }
 
+# Serialise cycles. CI POSTs /hooks/sync up to twelve times while polling, and a
+# slow cycle means the next POST starts a second one on the same directories —
+# which is how two runs ended up fighting over one temp file on .63. mkdir is
+# the portable atomic test-and-set; a stale lock from a killed container is
+# cleared by age rather than trusting the PID.
+LOCK="${WWW}/.sync.lock"
+with_lock() {
+    if [ -d "$LOCK" ]; then
+        if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
+            echo "clearing a stale sync lock"; rmdir "$LOCK" 2>/dev/null || true
+        else
+            echo "another sync cycle is running; skipping"
+            return 0
+        fi
+    fi
+    mkdir "$LOCK" 2>/dev/null || { echo "another sync cycle just started; skipping"; return 0; }
+    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+    "$@"
+    rmdir "$LOCK" 2>/dev/null || true
+    trap - EXIT INT TERM
+}
+
 mode="${1:-loop}"
 case "$mode" in
     once)
         echo "segno mirror once: repo=${REPO} -> ${WWW}/updates/appliance/{experimental,production}"
-        run_once
+        with_lock run_once
         ;;
     loop)
         echo "segno mirror: repo=${REPO} interval=${INTERVAL}s -> ${WWW}/updates/appliance/{experimental,production}"
         while true; do
-            run_once
+            with_lock run_once
             sleep "$INTERVAL"
         done
         ;;
