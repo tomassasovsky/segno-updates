@@ -1,0 +1,13 @@
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run mirror sync tests (dash, like the container's sh)
+        run: sh sync/test/run_sync_tests.sh
+      - name: Shell syntax check
+        run: for f in sync/*.sh; do sh -n "$f"; done

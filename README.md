@@ -8,14 +8,14 @@ to this container as `segno-updates:3029` over a shared Docker network.
 ## Layout served
 ```
 /updates/appliance/<channel>/manifest.json     # the Pi reads this
-/updates/appliance/<channel>/loopy-appliance-<v>.raucb
+/updates/appliance/<channel>/segno-appliance-<v>.raucb
 /updates/macos/appcast.xml   (later)
 /updates/windows/appcast.xml (later)
 ```
 
 `manifest.json` schema:
 ```json
-{ "version": "0.2.0-experimental.9", "bundle": "loopy-appliance-….raucb", "sha256": "<hex>", "channel": "experimental" }
+{ "version": "0.2.0-experimental.9", "bundle": "segno-appliance-….raucb", "sha256": "<hex>", "channel": "experimental" }
 ```
 The Pi OTA client compares `version` to the running build; if newer it downloads
 `bundle` from the same dir, verifies `sha256`, then `rauc install`s it (RAUC also
@@ -32,7 +32,7 @@ context:
    (`https://github.com/tomassasovsky/segno-updates`), compose path `docker-compose.yml`.
    Deploy — it builds both images and publishes host port **3029**.
 2. Point Nginx Proxy Manager's `segno.aquiles.dev` proxy host at `<docker-host>:3029`.
-3. Set stack env **`SYNC_TOKEN`** to a long random secret (same value as the loopy
+3. Set stack env **`SYNC_TOKEN`** to a long random secret (same value as the segno
    repo Actions secret `SEGNO_SYNC_TOKEN`). Without it, `/hooks/sync` returns 503
    and only the poll loop runs.
 
@@ -57,3 +57,21 @@ curl -fsS -X POST \
   -H "Authorization: Bearer $SEGNO_SYNC_TOKEN" \
   https://segno.aquiles.dev/hooks/sync
 ```
+
+## Guarantees
+
+- `manifest.json` is the last file to go live for a release, and only once
+  every file it names is on disk with the published checksum. A device either
+  sees the previous manifest or a new one whose bundle is already servable.
+- A sync lock is held by a heartbeat. A holder that dies without cleaning up
+  (a recreated container, a killed cycle) is taken over after two minutes
+  instead of blocking every cycle for half an hour.
+
+## Tests
+
+```sh
+sh sync/test/run_sync_tests.sh
+```
+
+Runs the mirror cycle and the lock against fake GitHub responses; no network,
+token or container needed. CI runs it on every push.
