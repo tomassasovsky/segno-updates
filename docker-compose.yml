@@ -26,10 +26,10 @@ services:
     container_name: segno-mirror
     restart: unless-stopped
     environment:
-      GITHUB_REPO: "tomassasovsky/loopy"
+      GITHUB_REPO: "tomassasovsky/segno"
       POLL_INTERVAL: "300"      # seconds between GitHub Releases polls (fallback)
       WWW_DIR: "/www"
-      # Required for POST /hooks/sync. Same value as loopy GitHub Actions secret
+      # Required for POST /hooks/sync. Same value as the segno GitHub Actions secret
       # SEGNO_SYNC_TOKEN. Set as a Portainer stack env var; empty disables the trigger.
       SYNC_TOKEN: ${SYNC_TOKEN:-}
       # GITHUB_TOKEN: ${GITHUB_TOKEN:-}  # set if releases are private
