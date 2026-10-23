@@ -1,12 +1,16 @@
 # segno update server
 
 Static host for Loopy/segno updates — appliance RAUC bundles + a JSON manifest the
-Pi polls (and desktop Sparkle/WinSparkle appcasts later). Runs behind **Nginx Proxy
+Pi polls (and desktop Sparkle/WinSparkle appcasts later). It also fronts the Segno
+website: every path outside `/updates/`, `/hooks/sync` and `/healthz` is proxied to
+the `segno-site` container (`ghcr.io/tomassasovsky/segno-site`, built from `site/`
+in the segno repo). Runs behind **Nginx Proxy
 Manager** (a separate container), which reverse-proxies `https://segno.aquiles.dev`
 to this container as `segno-updates:3029` over a shared Docker network.
 
 ## Layout served
 ```
+/                                              # the website (segno-site container)
 /updates/appliance/<channel>/manifest.json     # the Pi reads this
 /updates/appliance/<channel>/segno-appliance-<v>.raucb
 /updates/macos/appcast.xml   (later)
@@ -35,6 +39,11 @@ context:
 3. Set stack env **`SYNC_TOKEN`** to a long random secret (same value as the segno
    repo Actions secret `SEGNO_SYNC_TOKEN`). Without it, `/hooks/sync` returns 503
    and only the poll loop runs.
+
+The `segno-site` image is public on GHCR and needs no credentials. The watchtower
+container on the host pulls a new `:latest` within five minutes of the segno repo's
+Site workflow publishing it. nginx resolves `segno-site` per request, so updates keep
+being served while the site container is down or being replaced.
 
 Verify: `curl https://segno.aquiles.dev/healthz` → `ok`. Until the first release is
 published the manifest 404s (nothing mirrored yet) — that's expected.
