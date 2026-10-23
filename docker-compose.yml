@@ -1,5 +1,6 @@
-# Loopy / segno update server. Self-contained (no host-file binds — Portainer-safe):
+# Loopy / segno update server and website. Self-contained (no host-file binds — Portainer-safe):
 #   segno-updates  — nginx image with the config baked in, serves /updates/... on 3029
+#                    and proxies everything else to segno-site
 #   segno-mirror   — polls the GitHub Releases API, writes artifacts into the shared
 #                    named volume that nginx serves; also accepts POST /sync (proxied
 #                    publicly as /hooks/sync) when SYNC_TOKEN is set
@@ -35,6 +36,13 @@ services:
       # GITHUB_TOKEN: ${GITHUB_TOKEN:-}  # set if releases are private
     volumes:
       - updates-www:/www        # read-write: the mirror writes updates/appliance/<channel>/
+
+  segno-site:
+    # The website, built from site/ in tomassasovsky/segno by its Site workflow.
+    # Watchtower on this host pulls a new :latest within five minutes.
+    image: ghcr.io/tomassasovsky/segno-site:latest
+    container_name: segno-site
+    restart: unless-stopped
 
 # Shared named volume: the mirror populates it, nginx serves it. Persists across
 # redeploys (unlike a repo-clone bind) and needs no host files to pre-exist.
