@@ -40,9 +40,11 @@ context:
    repo Actions secret `SEGNO_SYNC_TOKEN`). Without it, `/hooks/sync` returns 503
    and only the poll loop runs.
 
-The `segno-site` image is public on GHCR and needs no credentials. The watchtower
-container on the host pulls a new `:latest` within five minutes of the segno repo's
-Site workflow publishing it. nginx resolves `segno-site` per request, so updates keep
+The `segno-site` image is public on GHCR and needs no credentials. The host's
+watchtower runs with `WATCHTOWER_LABEL_ENABLE=true` and checks once a day, so
+`segno-site` carries the `com.centurylinklabs.watchtower.enable` label and a new
+`:latest` goes live within 24 hours of the segno repo's Site workflow publishing it.
+To publish sooner, redeploy the stack in Portainer with "Re-pull image" on. nginx resolves `segno-site` per request, so updates keep
 being served while the site container is down or being replaced.
 
 Verify: `curl https://segno.aquiles.dev/healthz` → `ok`. Until the first release is

@@ -39,10 +39,14 @@ services:
 
   segno-site:
     # The website, built from site/ in tomassasovsky/segno by its Site workflow.
-    # Watchtower on this host pulls a new :latest within five minutes.
+    # Watchtower on this host only updates containers that carry its enable
+    # label, and it checks once a day (WATCHTOWER_POLL_INTERVAL=86400), so a new
+    # :latest goes live within 24 hours of the Site workflow pushing it.
     image: ghcr.io/tomassasovsky/segno-site:latest
     container_name: segno-site
     restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
 
 # Shared named volume: the mirror populates it, nginx serves it. Persists across
 # redeploys (unlike a repo-clone bind) and needs no host files to pre-exist.
